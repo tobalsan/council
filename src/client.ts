@@ -1,6 +1,11 @@
 import OpenAI from "openai";
 import type { NormalizedModelNode } from "./types.js";
 
+const RESPONSES_API_BASES = new Set([
+  "https://api.openai.com/v1",
+  "https://api.x.ai/v1",
+]);
+
 const RETRYABLE_ERROR_CODES = new Set([
   "ECONNRESET",
   "ECONNREFUSED",
@@ -43,6 +48,26 @@ async function tryCall(input: CallModelInput): Promise<string> {
   });
 
   const signal = AbortSignal.timeout(input.node.timeoutSec * 1000);
+  if (shouldUseResponsesAPI(input.node.baseUrl)) {
+    const response = await client.responses.create(
+      {
+        model: input.node.model,
+        input: input.userMessage,
+        instructions: input.systemPrompt,
+        stream: false,
+        reasoning: { effort: "high" },
+      } as OpenAI.Responses.ResponseCreateParamsNonStreaming,
+      { signal },
+    );
+
+    const text = extractResponsesText(response);
+    if (text) {
+      return text;
+    }
+
+    throw new Error("Responses API returned empty content");
+  }
+
   const request: OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming =
     {
       model: input.node.model,
@@ -80,6 +105,55 @@ async function tryCall(input: CallModelInput): Promise<string> {
   }
 
   throw new Error("Completion returned empty content");
+}
+
+function shouldUseResponsesAPI(baseUrl: string): boolean {
+  return RESPONSES_API_BASES.has(normalizeComparableBaseUrl(baseUrl));
+}
+
+function normalizeComparableBaseUrl(baseUrl: string): string {
+  try {
+    const parsed = new URL(baseUrl);
+    const pathname = parsed.pathname.replace(/\/+$/, "");
+    return `${parsed.protocol}//${parsed.host}${pathname}`;
+  } catch {
+    return baseUrl.replace(/\/+$/, "");
+  }
+}
+
+function extractResponsesText(response: OpenAI.Responses.Response): string | null {
+  if (typeof response.output_text === "string" && response.output_text.trim().length > 0) {
+    return response.output_text.trim();
+  }
+
+  const output = (response as { output?: unknown }).output;
+  if (!Array.isArray(output)) {
+    return null;
+  }
+
+  const texts: string[] = [];
+  for (const item of output) {
+    if (!item || typeof item !== "object") {
+      continue;
+    }
+    const content = (item as { content?: unknown }).content;
+    if (!Array.isArray(content)) {
+      continue;
+    }
+
+    for (const part of content) {
+      if (!part || typeof part !== "object") {
+        continue;
+      }
+      const type = (part as { type?: unknown }).type;
+      const text = (part as { text?: unknown }).text;
+      if (type === "output_text" && typeof text === "string" && text.trim().length > 0) {
+        texts.push(text.trim());
+      }
+    }
+  }
+
+  return texts.length > 0 ? texts.join("\n").trim() : null;
 }
 
 export function formatError(error: unknown): string {

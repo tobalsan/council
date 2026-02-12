@@ -20,7 +20,7 @@ Primary design goals:
 
 - Runtime: Bun
 - Language: TypeScript (strict mode)
-- External dependency: `openai` SDK (chat completions API)
+- External dependency: `openai` SDK (Responses + Chat Completions APIs)
 
 No framework is used for CLI parsing.
 
@@ -39,10 +39,15 @@ No framework is used for CLI parsing.
   - Applies timeout precedence.
 - `src/client.ts`
   - Wraps OpenAI SDK request execution.
-  - Enforces non-streaming requests with `reasoning_effort: "high"`.
+  - Auto-selects API by endpoint:
+    - `https://api.openai.com/v1` and `https://api.x.ai/v1` -> Responses API.
+    - all other endpoints -> Chat Completions API.
+  - Enforces high reasoning effort:
+    - Responses: `reasoning.effort = "high"`
+    - Chat Completions: `reasoning_effort = "high"`
   - Applies per-request timeout.
   - Implements one retry for transient failures (network/timeout/429/5xx).
-  - Normalizes completion text extraction.
+  - Normalizes text extraction for both APIs.
 - `src/council.ts`
   - Core orchestration (round 1 -> round 2 -> head synthesis).
   - Handles per-member failure behavior and round 2 fallback-to-round1.

@@ -77,6 +77,11 @@ council test head "Give me one production-readiness checklist"
 
 Timeout precedence: member/head `timeout` > global `timeout` > default `120` seconds.
 
+API selection by endpoint:
+
+- `https://api.openai.com/v1` and `https://api.x.ai/v1`: uses Responses API automatically.
+- Other endpoints (for example OpenRouter/Gemini-compatible): uses Chat Completions.
+
 ## Development
 
 ```bash

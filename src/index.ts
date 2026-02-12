@@ -7,14 +7,16 @@ import {
   DEFAULT_HEAD_SYSTEM_PROMPT,
   DEFAULT_MEMBER_SYSTEM_PROMPT,
 } from "./prompts.js";
+import { buildPromptWithFiles, FileInputError, readFiles } from "./files.js";
 
 const USAGE = `Usage: council [options] [question]
-       council test <id> <prompt>
+       council test <id> <prompt> [options]
 
 Arguments:
   question          The question or request for the council (reads from stdin if omitted)
 
 Options:
+  -f, --file        Files/directories or glob patterns to attach (prefix with !pattern to exclude)
   --no-revise       Skip the revision round (round 2); go directly from initial answers to head synthesis
   --verbose         Show each member's final response before the head's synthesis
   --help            Show help`;
@@ -23,6 +25,7 @@ interface ParsedArgs {
   noRevise: boolean;
   verbose: boolean;
   help: boolean;
+  fileInputs: string[];
   questionFromArgs: string | null;
 }
 
@@ -48,9 +51,14 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const normalizedQuestion = question.trim();
+  let normalizedQuestion = question.trim();
 
   try {
+    if (parsed.fileInputs.length > 0) {
+      const files = await readFiles(parsed.fileInputs, { cwd: process.cwd() });
+      normalizedQuestion = buildPromptWithFiles(normalizedQuestion, files, process.cwd());
+    }
+
     const config = await loadConfig();
     const result = await runCouncil(config, {
       question: normalizedQuestion,
@@ -65,6 +73,11 @@ async function main(): Promise<void> {
 
     process.stdout.write(`${result.headAnswer}\n`);
   } catch (error) {
+    if (error instanceof FileInputError) {
+      printError(`File input error: ${error.message}`);
+      process.exit(1);
+    }
+
     if (error instanceof ConfigError || error instanceof CouncilError) {
       printError(error.message);
       process.exit(1);
@@ -77,11 +90,12 @@ async function main(): Promise<void> {
 }
 
 async function runTestCommand(args: string[]): Promise<void> {
-  const memberId = args[0];
-  const prompt = args.slice(1).join(" ").trim();
+  const parsed = parseArgs(args);
+  const memberId = parsed.questionFromArgs?.split(" ")[0]?.trim();
+  const prompt = parsed.questionFromArgs?.split(" ").slice(1).join(" ").trim() ?? "";
 
   if (!memberId || !prompt) {
-    printError("Invalid test command. Expected: council test <id> <prompt>");
+    printError("Invalid test command. Expected: council test <id> <prompt> [--file ...]");
     printError(USAGE);
     process.exit(1);
   }
@@ -99,6 +113,12 @@ async function runTestCommand(args: string[]): Promise<void> {
       process.exit(1);
     }
 
+    let promptWithFiles = prompt;
+    if (parsed.fileInputs.length > 0) {
+      const files = await readFiles(parsed.fileInputs, { cwd: process.cwd() });
+      promptWithFiles = buildPromptWithFiles(prompt, files, process.cwd());
+    }
+
     const targetLabel = isHead ? "head" : `member "${memberId}"`;
     const node = isHead ? config.head : member!;
     const systemPrompt =
@@ -109,13 +129,18 @@ async function runTestCommand(args: string[]): Promise<void> {
     const result = await callModel({
       node,
       systemPrompt,
-      userMessage: prompt,
+      userMessage: promptWithFiles,
     });
     process.stderr.write(
       `✓ ${isHead ? "Head" : `Member "${memberId}"`} responded in ${(result.elapsedMs / 1000).toFixed(1)}s\n`,
     );
     process.stdout.write(`${result.text}\n`);
   } catch (error) {
+    if (error instanceof FileInputError) {
+      printError(`File input error: ${error.message}`);
+      process.exit(1);
+    }
+
     if (error instanceof ConfigError) {
       printError(`Test command failed to load config: ${error.message}`);
       process.exit(1);
@@ -130,9 +155,15 @@ function parseArgs(argv: string[]): ParsedArgs {
   let noRevise = false;
   let verbose = false;
   let help = false;
+  const fileInputs: string[] = [];
   const positional: string[] = [];
 
-  for (const arg of argv) {
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if (!arg) {
+      continue;
+    }
+
     if (arg === "--no-revise") {
       noRevise = true;
       continue;
@@ -145,6 +176,22 @@ function parseArgs(argv: string[]): ParsedArgs {
 
     if (arg === "--help") {
       help = true;
+      continue;
+    }
+
+    if (arg === "--file" || arg === "-f") {
+      const value = argv[i + 1];
+      if (!value || value.startsWith("--") || value === "-f") {
+        printError("--file requires at least one path or glob pattern");
+        process.exit(1);
+      }
+
+      const entries = value
+        .split(",")
+        .map((item) => item.trim())
+        .filter((item) => item.length > 0);
+      fileInputs.push(...entries);
+      i += 1;
       continue;
     }
 
@@ -161,6 +208,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     noRevise,
     verbose,
     help,
+    fileInputs,
     questionFromArgs: positional.length > 0 ? positional.join(" ") : null,
   };
 }

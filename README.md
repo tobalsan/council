@@ -24,14 +24,21 @@ council --help
 
 ```bash
 council [options] [question]
-council test <id> <prompt>
+council test <id> <prompt> [options]
 ```
 
 Options:
 
 - `--no-revise`: skip round 2 revision
 - `--verbose`: print each member final answer before head synthesis
+- `-f, --file`: attach file context via files/directories/globs (supports exclusions with `!pattern`)
 - `--help`: show help
+
+`--file` behavior:
+
+- Accepts repeated flags and comma-separated values in one flag.
+- Supports excludes with `!pattern` (for example `!src/**/*.test.ts`).
+- Fails fast for missing/invalid paths, zero matches, or files larger than 1 MB.
 
 Examples:
 
@@ -39,8 +46,9 @@ Examples:
 council "Recommend a backend stack for a small SaaS"
 council --no-revise "Quick tradeoff: Bun vs Node for CLI tools"
 council --verbose "Design a rollout plan for feature flags"
+council --file "src/**/*.ts,!src/**/*.test.ts" "Review architecture risks and schema drift"
 cat requirements.txt | council
-council test gpt "Give me 3 deployment debugging steps"
+council test gpt "Give me 3 deployment debugging steps" --file "src/**/*.ts,*/*.test.ts"
 council test head "Give me one production-readiness checklist"
 ```
 

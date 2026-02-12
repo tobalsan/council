@@ -62,6 +62,7 @@ Command:
 
 ```bash
 council [options] [question]
+council test <id> <prompt>
 ```
 
 Flags:
@@ -69,6 +70,12 @@ Flags:
 - `--no-revise`: skip round 2.
 - `--verbose`: print final member answers before head answer.
 - `--help`: print usage and exit `0`.
+
+Subcommand:
+
+- `test <id> <prompt>`: run one direct call for quick debugging.
+  - If `<id>` is `head`, uses configured head node + head system prompt.
+  - Otherwise `<id>` must match a configured member id.
 
 Input resolution order:
 
@@ -80,6 +87,7 @@ Output behavior:
 
 - `stdout`: final answer (and verbose member blocks when requested).
 - `stderr`: status and errors.
+- `council test`: single model output to `stdout`, explicit test diagnostics/errors to `stderr`.
 
 Exit behavior:
 

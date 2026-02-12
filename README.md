@@ -24,6 +24,7 @@ council --help
 
 ```bash
 council [options] [question]
+council test <id> <prompt>
 ```
 
 Options:
@@ -39,6 +40,8 @@ council "Recommend a backend stack for a small SaaS"
 council --no-revise "Quick tradeoff: Bun vs Node for CLI tools"
 council --verbose "Design a rollout plan for feature flags"
 cat requirements.txt | council
+council test gpt "Give me 3 deployment debugging steps"
+council test head "Give me one production-readiness checklist"
 ```
 
 ## Config (`~/.council/council.json`)

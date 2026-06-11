@@ -54,7 +54,7 @@ council test head "Give me one production-readiness checklist"
 
 ## Config (`~/.council/council.json`)
 
-`api_key` can be a literal key or `$ENV_VAR`.
+`api_key` can be a literal key or `$ENV_VAR`. `reasoning_effort` is optional per member/head (default `xhigh`), passed through verbatim to the provider (`low|medium|high|xhigh|max` for Anthropic/OpenAI; xAI grok supports only up to `high`, so set `reasoning_effort: "high"` for xAI members).
 
 ```json
 {
@@ -64,7 +64,8 @@ council test head "Give me one production-readiness checklist"
       "base_url": "https://openrouter.ai/api/v1/chat/completions",
       "model": "xai/grok-4.1-fast",
       "api_key": "$OPENROUTER_KEY",
-      "timeout": 180
+      "timeout": 180,
+      "reasoning_effort": "high"
     },
     {
       "id": "gpt",
@@ -87,6 +88,7 @@ Timeout precedence: member/head `timeout` > global `timeout` > default `120` sec
 
 API selection by endpoint:
 
+- `https://api.anthropic.com`: uses the native Anthropic Messages API (adaptive thinking + effort).
 - `https://api.openai.com/v1` and `https://api.x.ai/v1`: uses Responses API automatically.
 - Other endpoints (for example OpenRouter/Gemini-compatible): uses Chat Completions.
 

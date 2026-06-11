@@ -4,6 +4,7 @@ export interface ModelNodeConfig {
   api_key: string;
   system_prompt?: string;
   timeout?: number;
+  reasoning_effort?: string;
 }
 
 export interface MemberConfig extends ModelNodeConfig {
@@ -24,6 +25,7 @@ export interface NormalizedModelNode {
   apiKey: string;
   timeoutSec: number;
   systemPrompt?: string;
+  reasoningEffort: string;
 }
 
 export interface NormalizedMember extends NormalizedModelNode {

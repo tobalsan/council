@@ -11,6 +11,7 @@ import type {
 } from "./types.js";
 
 const DEFAULT_TIMEOUT_SEC = 120;
+const DEFAULT_REASONING_EFFORT = "xhigh";
 
 export class ConfigError extends Error {}
 
@@ -98,6 +99,10 @@ function normalizeMember(
     input.system_prompt,
     `members[${index}].system_prompt`,
   );
+  const reasoningEffort = normalizeOptionalString(
+    input.reasoning_effort,
+    `members[${index}].reasoning_effort`,
+  );
 
   return {
     id,
@@ -105,6 +110,7 @@ function normalizeMember(
     model,
     apiKey,
     timeoutSec: timeoutOverride ?? globalTimeoutSec,
+    reasoningEffort: reasoningEffort ?? DEFAULT_REASONING_EFFORT,
     ...(systemPrompt ? { systemPrompt } : {}),
   };
 }
@@ -128,12 +134,17 @@ function normalizeHead(
     input.system_prompt,
     "head.system_prompt",
   );
+  const reasoningEffort = normalizeOptionalString(
+    input.reasoning_effort,
+    "head.reasoning_effort",
+  );
 
   return {
     baseUrl,
     model,
     apiKey,
     timeoutSec: timeoutOverride ?? globalTimeoutSec,
+    reasoningEffort: reasoningEffort ?? DEFAULT_REASONING_EFFORT,
     ...(systemPrompt ? { systemPrompt } : {}),
   };
 }

@@ -1,5 +1,8 @@
+import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 import type { NormalizedModelNode } from "./types.js";
+
+const ANTHROPIC_MAX_TOKENS = 32000;
 
 const RESPONSES_API_BASES = new Set([
   "https://api.openai.com/v1",
@@ -42,6 +45,10 @@ export async function callModel(input: CallModelInput): Promise<CallModelResult>
 }
 
 async function tryCall(input: CallModelInput): Promise<string> {
+  if (isAnthropicBase(input.node.baseUrl)) {
+    return await callAnthropic(input);
+  }
+
   const client = new OpenAI({
     apiKey: input.node.apiKey,
     baseURL: input.node.baseUrl,
@@ -55,7 +62,7 @@ async function tryCall(input: CallModelInput): Promise<string> {
         input: input.userMessage,
         instructions: input.systemPrompt,
         stream: false,
-        reasoning: { effort: "high" },
+        reasoning: { effort: input.node.reasoningEffort },
       } as OpenAI.Responses.ResponseCreateParamsNonStreaming,
       { signal },
     );
@@ -68,16 +75,15 @@ async function tryCall(input: CallModelInput): Promise<string> {
     throw new Error("Responses API returned empty content");
   }
 
-  const request: OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming =
-    {
-      model: input.node.model,
-      reasoning_effort: "high",
-      stream: false,
-      messages: [
-        { role: "system", content: input.systemPrompt },
-        { role: "user", content: input.userMessage },
-      ],
-    };
+  const request = {
+    model: input.node.model,
+    reasoning_effort: input.node.reasoningEffort,
+    stream: false,
+    messages: [
+      { role: "system", content: input.systemPrompt },
+      { role: "user", content: input.userMessage },
+    ],
+  } as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming;
 
   const response = await client.chat.completions.create(
     request,
@@ -105,6 +111,45 @@ async function tryCall(input: CallModelInput): Promise<string> {
   }
 
   throw new Error("Completion returned empty content");
+}
+
+function isAnthropicBase(baseUrl: string): boolean {
+  try {
+    return new URL(baseUrl).host === "api.anthropic.com";
+  } catch {
+    return false;
+  }
+}
+
+async function callAnthropic(input: CallModelInput): Promise<string> {
+  const client = new Anthropic({ apiKey: input.node.apiKey });
+  const signal = AbortSignal.timeout(input.node.timeoutSec * 1000);
+
+  const stream = client.messages.stream(
+    {
+      model: input.node.model,
+      max_tokens: ANTHROPIC_MAX_TOKENS,
+      thinking: { type: "adaptive" },
+      output_config: { effort: input.node.reasoningEffort as Anthropic.Messages.OutputConfig["effort"] },
+      system: input.systemPrompt,
+      messages: [{ role: "user", content: input.userMessage }],
+    } as Anthropic.MessageStreamParams,
+    { signal },
+  );
+
+  const message = await stream.finalMessage();
+
+  const text = message.content
+    .filter((block): block is Anthropic.TextBlock => block.type === "text")
+    .map((block) => block.text)
+    .join("\n")
+    .trim();
+
+  if (text.length > 0) {
+    return text;
+  }
+
+  throw new Error("Anthropic API returned empty content");
 }
 
 function shouldUseResponsesAPI(baseUrl: string): boolean {

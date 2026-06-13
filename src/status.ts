@@ -28,3 +28,11 @@ export function headSuccess(): void {
 export function headFail(reason: string): void {
   log(`✗ Head failed: ${reason}`);
 }
+
+export function runDir(path: string): void {
+  log(`📁 Saving responses to ${path}`);
+}
+
+export function memberSaved(memberId: string, round: 1 | 2, path: string): void {
+  log(`  ↳ saved ${memberId} round ${round} → ${path}`);
+}

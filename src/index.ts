@@ -1,22 +1,26 @@
 #!/usr/bin/env bun
 
 import { loadConfig, ConfigError } from "./config.js";
-import { runCouncil, CouncilError } from "./council.js";
+import { runCouncil, CouncilError, synthesize } from "./council.js";
 import { callModel, formatError } from "./client.js";
 import {
   DEFAULT_HEAD_SYSTEM_PROMPT,
   DEFAULT_MEMBER_SYSTEM_PROMPT,
 } from "./prompts.js";
 import { buildPromptWithFiles, FileInputError, readFiles } from "./files.js";
+import { loadSavedRun } from "./runstore.js";
 
 const USAGE = `Usage: council [options] [question]
+       council head <dir> [--verbose]
        council test <id> <prompt> [options]
 
 Arguments:
   question          The question or request for the council (reads from stdin if omitted)
+  head <dir>        Re-run head synthesis on a previously saved run directory
 
 Options:
   -f, --file        Files/directories or glob patterns to attach (prefix with !pattern to exclude)
+  --skip <ids>      Comma-separated member ids to skip (repeatable)
   --no-revise       Skip the revision round (round 2); go directly from initial answers to head synthesis
   --verbose         Show each member's final response before the head's synthesis
   --help            Show help`;
@@ -26,11 +30,17 @@ interface ParsedArgs {
   verbose: boolean;
   help: boolean;
   fileInputs: string[];
+  skip: string[];
   questionFromArgs: string | null;
 }
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
+
+  if (args[0] === "head") {
+    await runHeadCommand(args.slice(1));
+    return;
+  }
 
   if (args[0] === "test") {
     await runTestCommand(args.slice(1));
@@ -60,7 +70,24 @@ async function main(): Promise<void> {
     }
 
     const config = await loadConfig();
-    const result = await runCouncil(config, {
+
+    let filteredMembers = config.members;
+    if (parsed.skip.length > 0) {
+      const memberIds = new Set(config.members.map((m) => m.id));
+      for (const skipId of parsed.skip) {
+        if (!memberIds.has(skipId)) {
+          printError(`⚠ --skip: no member named "${skipId}"`);
+        }
+      }
+      const skipSet = new Set(parsed.skip);
+      filteredMembers = config.members.filter((m) => !skipSet.has(m.id));
+      if (filteredMembers.length === 0) {
+        printError("All members were skipped. Nothing to run.");
+        process.exit(1);
+      }
+    }
+
+    const result = await runCouncil({ ...config, members: filteredMembers }, {
       question: normalizedQuestion,
       noRevise: parsed.noRevise,
     });
@@ -78,6 +105,39 @@ async function main(): Promise<void> {
       process.exit(1);
     }
 
+    if (error instanceof ConfigError || error instanceof CouncilError) {
+      printError(error.message);
+      process.exit(1);
+    }
+
+    const message = error instanceof Error ? error.message : "Unknown error";
+    printError(`Unexpected error: ${message}`);
+    process.exit(1);
+  }
+}
+
+async function runHeadCommand(args: string[]): Promise<void> {
+  const verbose = args.includes("--verbose");
+  const dir = args.find((a) => !a.startsWith("--"));
+
+  if (!dir) {
+    printError("Usage: council head <dir> [--verbose]");
+    process.exit(1);
+  }
+
+  try {
+    const config = await loadConfig();
+    const { question, answers } = loadSavedRun(dir);
+
+    if (verbose) {
+      for (const answer of answers) {
+        process.stdout.write(`### Member: ${answer.id}\n\n${answer.text}\n\n---\n\n`);
+      }
+    }
+
+    const headAnswer = await synthesize(config, question, answers);
+    process.stdout.write(`${headAnswer}\n`);
+  } catch (error) {
     if (error instanceof ConfigError || error instanceof CouncilError) {
       printError(error.message);
       process.exit(1);
@@ -156,6 +216,7 @@ function parseArgs(argv: string[]): ParsedArgs {
   let verbose = false;
   let help = false;
   const fileInputs: string[] = [];
+  const skip: string[] = [];
   const positional: string[] = [];
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -195,6 +256,22 @@ function parseArgs(argv: string[]): ParsedArgs {
       continue;
     }
 
+    if (arg === "--skip") {
+      const value = argv[i + 1];
+      if (!value || value.startsWith("--")) {
+        printError("--skip requires a value");
+        process.exit(1);
+      }
+
+      const entries = value
+        .split(",")
+        .map((item) => item.trim())
+        .filter((item) => item.length > 0);
+      skip.push(...entries);
+      i += 1;
+      continue;
+    }
+
     if (arg.startsWith("--")) {
       printError(`Unknown option: ${arg}`);
       printError(USAGE);
@@ -209,6 +286,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     verbose,
     help,
     fileInputs,
+    skip,
     questionFromArgs: positional.length > 0 ? positional.join(" ") : null,
   };
 }

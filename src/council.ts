@@ -5,6 +5,7 @@ import {
   DEFAULT_HEAD_SYSTEM_PROMPT,
   DEFAULT_MEMBER_SYSTEM_PROMPT,
 } from "./prompts.js";
+import { createRunDir, saveQuestion, saveMemberAnswer } from "./runstore.js";
 import * as status from "./status.js";
 import type {
   MemberAnswer,
@@ -20,7 +21,11 @@ export async function runCouncil(
   config: NormalizedCouncilConfig,
   options: RunCouncilOptions,
 ): Promise<RunCouncilResult> {
-  const round1Answers = await runRound1(config.members, options.question);
+  const runDirectory = createRunDir();
+  saveQuestion(runDirectory, options.question);
+  status.runDir(runDirectory);
+
+  const round1Answers = await runRound1(runDirectory, config.members, options.question);
 
   if (round1Answers.length === 0) {
     throw new CouncilError("All members failed in round 1. Nothing to synthesize.");
@@ -28,11 +33,24 @@ export async function runCouncil(
 
   const finalAnswers = options.noRevise
     ? round1Answers
-    : await runRound2(config.members, round1Answers, options.question);
+    : await runRound2(runDirectory, config.members, round1Answers, options.question);
 
+  const headAnswer = await synthesize(config, options.question, finalAnswers);
+
+  return {
+    headAnswer,
+    memberFinalAnswers: finalAnswers,
+  };
+}
+
+export async function synthesize(
+  config: NormalizedCouncilConfig,
+  question: string,
+  finalAnswers: MemberAnswer[],
+): Promise<string> {
   status.headStart();
   const headSystemPrompt = config.head.systemPrompt ?? DEFAULT_HEAD_SYSTEM_PROMPT;
-  const headUserPrompt = buildHeadUserPrompt(options.question, finalAnswers);
+  const headUserPrompt = buildHeadUserPrompt(question, finalAnswers);
 
   let headAnswer: string;
   try {
@@ -49,14 +67,11 @@ export async function runCouncil(
   }
 
   status.headSuccess();
-
-  return {
-    headAnswer,
-    memberFinalAnswers: finalAnswers,
-  };
+  return headAnswer;
 }
 
 async function runRound1(
+  runDirectory: string,
   members: NormalizedMember[],
   question: string,
 ): Promise<MemberAnswer[]> {
@@ -69,6 +84,8 @@ async function runRound1(
         userMessage: question,
       });
       status.memberSuccess(member.id, result.elapsedMs / 1000, 1);
+      const savedPath = saveMemberAnswer(runDirectory, member.id, 1, result.text);
+      status.memberSaved(member.id, 1, savedPath);
       return { id: member.id, text: result.text } as MemberAnswer;
     } catch (error) {
       status.memberFail(member.id, formatError(error), 1);
@@ -81,6 +98,7 @@ async function runRound1(
 }
 
 async function runRound2(
+  runDirectory: string,
   members: NormalizedMember[],
   round1Answers: MemberAnswer[],
   question: string,
@@ -105,6 +123,8 @@ async function runRound2(
         userMessage: revisionPrompt,
       });
       status.memberSuccess(member.id, result.elapsedMs / 1000, 2);
+      const savedPath = saveMemberAnswer(runDirectory, member.id, 2, result.text);
+      status.memberSaved(member.id, 2, savedPath);
       return { id: member.id, text: result.text } as MemberAnswer;
     } catch (error) {
       status.memberFail(member.id, formatError(error), 2);

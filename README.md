@@ -24,6 +24,7 @@ council --help
 
 ```bash
 council [options] [question]
+council head <dir> [--verbose]
 council test <id> <prompt> [options]
 ```
 
@@ -31,6 +32,7 @@ Options:
 
 - `--no-revise`: skip round 2 revision
 - `--verbose`: print each member final answer before head synthesis
+- `--skip <ids>`: skip one or more members for this run (comma-separated, repeatable)
 - `-f, --file`: attach file context via files/directories/globs (supports exclusions with `!pattern`)
 - `--help`: show help
 
@@ -51,6 +53,28 @@ cat requirements.txt | council
 council test gpt "Give me 3 deployment debugging steps" --file "src/**/*.ts,*/*.test.ts"
 council test head "Give me one production-readiness checklist"
 ```
+
+## Saving & resuming runs
+
+Every run writes member responses to a temp dir as they arrive (printed at startup):
+
+```
+📁 Saving responses to /var/folders/.../T/council/20260613-151549-30837
+```
+
+Layout: `question.md`, plus `<id>.r1.md` / `<id>.r2.md` per member (round 1 / revision; failures are not saved).
+
+If a run is interrupted (e.g. head timeout or a flaky member), you can resume without re-querying members:
+
+```bash
+# Re-run only the head synthesis from saved member output
+council head /var/folders/.../T/council/20260613-151549-30837 --verbose
+
+# Skip members that already succeeded (or keep failing) and rerun the rest
+council --skip grok,gemini "original question"
+```
+
+`council head <dir>` loads the saved question and each member's latest answer (prefers `.r2` over `.r1`), then runs head synthesis only.
 
 ## Config (`~/.council/council.json`)
 

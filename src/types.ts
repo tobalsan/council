@@ -1,10 +1,12 @@
 export interface ModelNodeConfig {
-  base_url: string;
+  base_url?: string;
   model: string;
-  api_key: string;
+  api_key?: string;
   system_prompt?: string;
   timeout?: number;
   reasoning_effort?: string;
+  cli?: string;
+  provider?: string;
 }
 
 export interface MemberConfig extends ModelNodeConfig {
@@ -19,20 +21,29 @@ export interface CouncilConfig {
   timeout?: number;
 }
 
-export interface NormalizedModelNode {
-  baseUrl: string;
+interface NormalizedNodeBase {
   model: string;
-  apiKey: string;
   timeoutSec: number;
-  systemPrompt?: string;
   reasoningEffort: string;
+  systemPrompt?: string;
 }
 
-export interface NormalizedMember extends NormalizedModelNode {
-  id: string;
+export interface NormalizedApiNode extends NormalizedNodeBase {
+  transport: "api";
+  baseUrl: string;
+  apiKey: string;
 }
 
-export interface NormalizedHead extends NormalizedModelNode {}
+export interface NormalizedCliNode extends NormalizedNodeBase {
+  transport: "cli";
+  cli: "codex" | "pi";
+  provider?: string;
+}
+
+export type NormalizedModelNode = NormalizedApiNode | NormalizedCliNode;
+
+export type NormalizedMember = NormalizedModelNode & { id: string };
+export type NormalizedHead = NormalizedModelNode;
 
 export interface NormalizedCouncilConfig {
   members: NormalizedMember[];

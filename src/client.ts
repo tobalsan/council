@@ -1,6 +1,10 @@
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
-import type { NormalizedModelNode } from "./types.js";
+import { spawn } from "node:child_process";
+import { readFile, unlink } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { NormalizedApiNode, NormalizedCliNode, NormalizedModelNode } from "./types.js";
 
 const ANTHROPIC_MAX_TOKENS = 32000;
 
@@ -16,6 +20,8 @@ const RETRYABLE_ERROR_CODES = new Set([
   "EAI_AGAIN",
   "ENOTFOUND",
 ]);
+
+let cliCallCounter = 0;
 
 export interface CallModelInput {
   node: NormalizedModelNode;
@@ -45,24 +51,30 @@ export async function callModel(input: CallModelInput): Promise<CallModelResult>
 }
 
 async function tryCall(input: CallModelInput): Promise<string> {
-  if (isAnthropicBase(input.node.baseUrl)) {
-    return await callAnthropic(input);
+  if (input.node.transport === "cli") {
+    return await callCli(input.node, input.systemPrompt, input.userMessage);
+  }
+
+  const node = input.node;
+
+  if (isAnthropicBase(node.baseUrl)) {
+    return await callAnthropic(node, input.systemPrompt, input.userMessage);
   }
 
   const client = new OpenAI({
-    apiKey: input.node.apiKey,
-    baseURL: input.node.baseUrl,
+    apiKey: node.apiKey,
+    baseURL: node.baseUrl,
   });
 
-  const signal = AbortSignal.timeout(input.node.timeoutSec * 1000);
-  if (shouldUseResponsesAPI(input.node.baseUrl)) {
+  const signal = AbortSignal.timeout(node.timeoutSec * 1000);
+  if (shouldUseResponsesAPI(node.baseUrl)) {
     const response = await client.responses.create(
       {
-        model: input.node.model,
+        model: node.model,
         input: input.userMessage,
         instructions: input.systemPrompt,
         stream: false,
-        reasoning: { effort: input.node.reasoningEffort },
+        reasoning: { effort: node.reasoningEffort },
       } as OpenAI.Responses.ResponseCreateParamsNonStreaming,
       { signal },
     );
@@ -76,8 +88,8 @@ async function tryCall(input: CallModelInput): Promise<string> {
   }
 
   const request = {
-    model: input.node.model,
-    reasoning_effort: input.node.reasoningEffort,
+    model: node.model,
+    reasoning_effort: node.reasoningEffort,
     stream: false,
     messages: [
       { role: "system", content: input.systemPrompt },
@@ -113,6 +125,171 @@ async function tryCall(input: CallModelInput): Promise<string> {
   throw new Error("Completion returned empty content");
 }
 
+interface ProcessResult {
+  code: number;
+  stdout: string;
+  stderr: string;
+}
+
+async function runProcess(
+  cmd: string,
+  args: string[],
+  stdinText: string | undefined,
+  timeoutSec: number,
+): Promise<ProcessResult> {
+  return new Promise((resolve, reject) => {
+    let child: ReturnType<typeof spawn>;
+
+    try {
+      child = spawn(cmd, args, { stdio: ["pipe", "pipe", "pipe"] });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      reject(new Error(`${cmd} not found or failed to start: ${message}`));
+      return;
+    }
+
+    if (!child.stdout || !child.stderr || !child.stdin) {
+      child.kill("SIGKILL");
+      reject(new Error(`${cmd} stdio streams not available`));
+      return;
+    }
+
+    let stdoutBuf = "";
+    let stderrBuf = "";
+    let settled = false;
+
+    const timer = setTimeout(() => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      child.kill("SIGKILL");
+      reject(new Error(`${cmd} exceeded ${timeoutSec}s limit`));
+    }, timeoutSec * 1000);
+
+    child.stdout.on("data", (chunk: Buffer) => {
+      stdoutBuf += chunk.toString("utf8");
+    });
+
+    child.stderr.on("data", (chunk: Buffer) => {
+      stderrBuf += chunk.toString("utf8");
+    });
+
+    child.on("error", (err) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      reject(new Error(`${cmd} not found or failed to start: ${err.message}`));
+    });
+
+    child.on("close", (code) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      resolve({ code: code ?? 1, stdout: stdoutBuf, stderr: stderrBuf });
+    });
+
+    if (stdinText !== undefined) {
+      child.stdin.write(stdinText, "utf8");
+      child.stdin.end();
+    } else {
+      child.stdin.end();
+    }
+  });
+}
+
+async function callCli(
+  node: NormalizedCliNode,
+  systemPrompt: string,
+  userMessage: string,
+): Promise<string> {
+  if (node.cli === "codex") {
+    return await callCodex(node, systemPrompt, userMessage);
+  }
+
+  return await callPi(node, systemPrompt, userMessage);
+}
+
+async function callCodex(
+  node: NormalizedCliNode,
+  systemPrompt: string,
+  userMessage: string,
+): Promise<string> {
+  const { model, reasoningEffort: effort, timeoutSec } = node;
+  const promptText = `${systemPrompt}\n\n${userMessage}`;
+
+  cliCallCounter += 1;
+  const tmpFile = join(tmpdir(), `council-codex-${process.pid}-${cliCallCounter}.txt`);
+
+  const args = [
+    "exec",
+    "--model", model,
+    "-c", `model_reasoning_effort="${effort}"`,
+    "-c", 'sandbox_permissions=["disk-full-read-access"]',
+    "--skip-git-repo-check",
+    "-o", tmpFile,
+    "-",
+  ];
+
+  const { code, stdout, stderr } = await runProcess("codex", args, promptText, timeoutSec);
+
+  if (code !== 0) {
+    throw new Error(`codex exited ${code}: ${stderr.trim() || stdout.trim()}`);
+  }
+
+  let answer: string;
+  try {
+    answer = (await readFile(tmpFile, "utf8")).trim();
+  } finally {
+    unlink(tmpFile).catch(() => undefined);
+  }
+
+  if (answer.length === 0) {
+    throw new Error("codex produced no output");
+  }
+
+  return answer;
+}
+
+async function callPi(
+  node: NormalizedCliNode,
+  systemPrompt: string,
+  userMessage: string,
+): Promise<string> {
+  const { model, reasoningEffort: effort, timeoutSec, provider } = node;
+
+  if (!provider) {
+    throw new Error("pi transport requires provider but none was set");
+  }
+
+  const args = [
+    "--provider", provider,
+    "--model", model,
+    "--thinking", effort,
+    "--no-tools",
+    "--no-session",
+    "--system-prompt", systemPrompt,
+    "-p", userMessage,
+  ];
+
+  const { code, stdout, stderr } = await runProcess("pi", args, undefined, timeoutSec);
+
+  if (code !== 0) {
+    throw new Error(`pi exited ${code}: ${stderr.trim() || stdout.trim()}`);
+  }
+
+  const answer = stdout.trim();
+  if (answer.length === 0) {
+    throw new Error("pi produced no output");
+  }
+
+  return answer;
+}
+
 function isAnthropicBase(baseUrl: string): boolean {
   try {
     return new URL(baseUrl).host === "api.anthropic.com";
@@ -121,18 +298,22 @@ function isAnthropicBase(baseUrl: string): boolean {
   }
 }
 
-async function callAnthropic(input: CallModelInput): Promise<string> {
-  const client = new Anthropic({ apiKey: input.node.apiKey });
-  const signal = AbortSignal.timeout(input.node.timeoutSec * 1000);
+async function callAnthropic(
+  node: NormalizedApiNode,
+  systemPrompt: string,
+  userMessage: string,
+): Promise<string> {
+  const client = new Anthropic({ apiKey: node.apiKey });
+  const signal = AbortSignal.timeout(node.timeoutSec * 1000);
 
   const stream = client.messages.stream(
     {
-      model: input.node.model,
+      model: node.model,
       max_tokens: ANTHROPIC_MAX_TOKENS,
       thinking: { type: "adaptive" },
-      output_config: { effort: input.node.reasoningEffort as Anthropic.Messages.OutputConfig["effort"] },
-      system: input.systemPrompt,
-      messages: [{ role: "user", content: input.userMessage }],
+      output_config: { effort: node.reasoningEffort as Anthropic.Messages.OutputConfig["effort"] },
+      system: systemPrompt,
+      messages: [{ role: "user", content: userMessage }],
     } as Anthropic.MessageStreamParams,
     { signal },
   );

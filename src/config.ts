@@ -5,9 +5,12 @@ import type {
   CouncilConfig,
   HeadConfig,
   MemberConfig,
+  NormalizedApiNode,
+  NormalizedCliNode,
   NormalizedCouncilConfig,
   NormalizedHead,
   NormalizedMember,
+  NormalizedModelNode,
 } from "./types.js";
 
 const DEFAULT_TIMEOUT_SEC = 120;
@@ -73,6 +76,63 @@ function normalizeConfig(input: unknown): NormalizedCouncilConfig {
   };
 }
 
+function normalizeNodeBase(
+  input: Record<string, unknown>,
+  prefix: string,
+  globalTimeoutSec: number,
+): { model: string; timeoutSec: number; reasoningEffort: string; systemPrompt?: string } {
+  const model = requireNonEmptyString(input.model, `${prefix}.model`);
+  const timeoutOverride = normalizeOptionalTimeout(input.timeout, `${prefix}.timeout`);
+  const systemPrompt = normalizeOptionalString(input.system_prompt, `${prefix}.system_prompt`);
+  const reasoningEffort = normalizeOptionalString(input.reasoning_effort, `${prefix}.reasoning_effort`);
+
+  return {
+    model,
+    timeoutSec: timeoutOverride ?? globalTimeoutSec,
+    reasoningEffort: reasoningEffort ?? DEFAULT_REASONING_EFFORT,
+    ...(systemPrompt ? { systemPrompt } : {}),
+  };
+}
+
+function normalizeCliNode(
+  input: Record<string, unknown>,
+  cliValue: string,
+  prefix: string,
+  globalTimeoutSec: number,
+): NormalizedCliNode {
+  if (cliValue !== "codex" && cliValue !== "pi") {
+    throw new ConfigError(
+      `${prefix}.cli must be "codex" or "pi", got "${cliValue}"`,
+    );
+  }
+
+  const base = normalizeNodeBase(input, prefix, globalTimeoutSec);
+
+  if (cliValue === "pi") {
+    const provider = requireNonEmptyString(input.provider, `${prefix}.provider`);
+    return { transport: "cli", cli: "pi", provider, ...base };
+  }
+
+  return { transport: "cli", cli: "codex", ...base };
+}
+
+function normalizeApiNode(
+  input: Record<string, unknown>,
+  prefix: string,
+  globalTimeoutSec: number,
+): NormalizedApiNode {
+  const baseUrl = normalizeBaseUrl(
+    requireNonEmptyString(input.base_url, `${prefix}.base_url`),
+  );
+  const apiKey = resolveApiKey(
+    requireNonEmptyString(input.api_key, `${prefix}.api_key`),
+    `${prefix}.api_key`,
+  );
+  const base = normalizeNodeBase(input, prefix, globalTimeoutSec);
+
+  return { transport: "api", baseUrl, apiKey, ...base };
+}
+
 function normalizeMember(
   input: unknown,
   index: number,
@@ -82,37 +142,15 @@ function normalizeMember(
     throw new ConfigError(`members[${index}] must be an object`);
   }
 
-  const id = requireNonEmptyString(input.id, `members[${index}].id`);
-  const baseUrl = normalizeBaseUrl(
-    requireNonEmptyString(input.base_url, `members[${index}].base_url`),
-  );
-  const model = requireNonEmptyString(input.model, `members[${index}].model`);
-  const apiKey = resolveApiKey(
-    requireNonEmptyString(input.api_key, `members[${index}].api_key`),
-    `members[${index}].api_key`,
-  );
-  const timeoutOverride = normalizeOptionalTimeout(
-    input.timeout,
-    `members[${index}].timeout`,
-  );
-  const systemPrompt = normalizeOptionalString(
-    input.system_prompt,
-    `members[${index}].system_prompt`,
-  );
-  const reasoningEffort = normalizeOptionalString(
-    input.reasoning_effort,
-    `members[${index}].reasoning_effort`,
-  );
+  const prefix = `members[${index}]`;
+  const id = requireNonEmptyString(input.id, `${prefix}.id`);
+  const cliRaw = normalizeOptionalString(input.cli, `${prefix}.cli`);
 
-  return {
-    id,
-    baseUrl,
-    model,
-    apiKey,
-    timeoutSec: timeoutOverride ?? globalTimeoutSec,
-    reasoningEffort: reasoningEffort ?? DEFAULT_REASONING_EFFORT,
-    ...(systemPrompt ? { systemPrompt } : {}),
-  };
+  const node: NormalizedModelNode = cliRaw
+    ? normalizeCliNode(input, cliRaw, prefix, globalTimeoutSec)
+    : normalizeApiNode(input, prefix, globalTimeoutSec);
+
+  return { ...node, id };
 }
 
 function normalizeHead(
@@ -123,30 +161,11 @@ function normalizeHead(
     throw new ConfigError("head must be an object");
   }
 
-  const baseUrl = normalizeBaseUrl(requireNonEmptyString(input.base_url, "head.base_url"));
-  const model = requireNonEmptyString(input.model, "head.model");
-  const apiKey = resolveApiKey(
-    requireNonEmptyString(input.api_key, "head.api_key"),
-    "head.api_key",
-  );
-  const timeoutOverride = normalizeOptionalTimeout(input.timeout, "head.timeout");
-  const systemPrompt = normalizeOptionalString(
-    input.system_prompt,
-    "head.system_prompt",
-  );
-  const reasoningEffort = normalizeOptionalString(
-    input.reasoning_effort,
-    "head.reasoning_effort",
-  );
+  const cliRaw = normalizeOptionalString(input.cli, "head.cli");
 
-  return {
-    baseUrl,
-    model,
-    apiKey,
-    timeoutSec: timeoutOverride ?? globalTimeoutSec,
-    reasoningEffort: reasoningEffort ?? DEFAULT_REASONING_EFFORT,
-    ...(systemPrompt ? { systemPrompt } : {}),
-  };
+  return cliRaw
+    ? normalizeCliNode(input, cliRaw, "head", globalTimeoutSec)
+    : normalizeApiNode(input, "head", globalTimeoutSec);
 }
 
 function resolveApiKey(value: string, path: string): string {

@@ -116,6 +116,27 @@ API selection by endpoint:
 - `https://api.openai.com/v1` and `https://api.x.ai/v1`: uses Responses API automatically.
 - Other endpoints (for example OpenRouter/Gemini-compatible): uses Chat Completions.
 
+### CLI transport
+
+Members and the head can run a local CLI instead of an HTTP API by setting `cli`. Supported values: `"codex"` and `"pi"`. `base_url` and `api_key` are not required for CLI nodes.
+
+- **codex** — must be authenticated before use (`codex` must be on `PATH`).
+- **pi** — requires `provider` (non-empty string passed to `--provider`). `pi` must be configured separately.
+
+`reasoning_effort`, `timeout`, and `system_prompt` work identically for CLI and API nodes. Mixed CLI/API councils are supported.
+
+Example CLI members and a codex head:
+
+```json
+{
+  "members": [
+    { "id": "gpt", "cli": "codex", "model": "gpt-5.5", "reasoning_effort": "high", "timeout": 300 },
+    { "id": "glm", "cli": "pi", "provider": "zai", "model": "glm-5.2", "reasoning_effort": "high", "timeout": 300 }
+  ],
+  "head": { "cli": "codex", "model": "gpt-5.5", "reasoning_effort": "xhigh", "timeout": 600 }
+}
+```
+
 ## Development
 
 ```bash

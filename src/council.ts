@@ -26,7 +26,7 @@ export async function runCouncil(
   saveQuestion(runDirectory, options.question);
   status.runDir(runDirectory);
 
-  const round1Answers = await runRound1(runDirectory, config.members, options.question);
+  const round1Answers = await runRound1(runDirectory, config.members, options.question, options.noStance);
 
   if (round1Answers.length === 0) {
     throw new CouncilError("All members failed in round 1. Nothing to synthesize.");
@@ -34,7 +34,7 @@ export async function runCouncil(
 
   const finalAnswers = options.noRevise
     ? round1Answers
-    : await runRound2(runDirectory, config.members, round1Answers, options.question);
+    : await runRound2(runDirectory, config.members, round1Answers, options.question, options.noStance);
 
   const headAnswer = await synthesize(config, options.question, finalAnswers);
 
@@ -75,6 +75,7 @@ async function runRound1(
   runDirectory: string,
   members: NormalizedMember[],
   question: string,
+  noStance: boolean,
 ): Promise<MemberAnswer[]> {
   const tasks = members.map(async (member) => {
     status.memberStart(member.id, 1);
@@ -82,7 +83,7 @@ async function runRound1(
       const result = await callModel({
         node: member,
         systemPrompt: member.systemPrompt ?? DEFAULT_MEMBER_SYSTEM_PROMPT,
-        userMessage: wrapWithStance(question, member.stance),
+        userMessage: wrapWithStance(question, noStance ? undefined : member.stance),
       });
       status.memberSuccess(member.id, result.elapsedMs / 1000, 1);
       const savedPath = saveMemberAnswer(runDirectory, member.id, 1, result.text);
@@ -103,6 +104,7 @@ async function runRound2(
   members: NormalizedMember[],
   round1Answers: MemberAnswer[],
   question: string,
+  noStance: boolean,
 ): Promise<MemberAnswer[]> {
   const round1ById = new Map(round1Answers.map((entry) => [entry.id, entry.text]));
   const activeMembers = members.filter((member) => round1ById.has(member.id));
@@ -121,7 +123,7 @@ async function runRound2(
       const result = await callModel({
         node: member,
         systemPrompt: member.systemPrompt ?? DEFAULT_MEMBER_SYSTEM_PROMPT,
-        userMessage: wrapWithStance(revisionPrompt, member.stance),
+        userMessage: wrapWithStance(revisionPrompt, noStance ? undefined : member.stance),
       });
       status.memberSuccess(member.id, result.elapsedMs / 1000, 2);
       const savedPath = saveMemberAnswer(runDirectory, member.id, 2, result.text);

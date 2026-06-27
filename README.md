@@ -31,6 +31,7 @@ council test <id> <prompt> [options]
 Options:
 
 - `--no-revise`: skip round 2 revision
+- `--no-stance`: disable per-member stance mandates for this run
 - `--verbose`: print each member final answer before head synthesis
 - `--skip <ids>`: skip one or more members for this run (comma-separated, repeatable)
 - `-f, --file`: attach file context via files/directories/globs (supports exclusions with `!pattern`)

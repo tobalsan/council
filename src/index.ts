@@ -23,11 +23,13 @@ Options:
   -f, --file        Files/directories or glob patterns to attach (prefix with !pattern to exclude)
   --skip <ids>      Comma-separated member ids to skip (repeatable)
   --no-revise       Skip the revision round (round 2); go directly from initial answers to head synthesis
+  --no-stance       Disable per-member stance mandates for this run
   --verbose         Show each member's final response before the head's synthesis
   --help            Show help`;
 
 interface ParsedArgs {
   noRevise: boolean;
+  noStance: boolean;
   verbose: boolean;
   help: boolean;
   fileInputs: string[];
@@ -91,6 +93,7 @@ async function main(): Promise<void> {
     const result = await runCouncil({ ...config, members: filteredMembers }, {
       question: normalizedQuestion,
       noRevise: parsed.noRevise,
+      noStance: parsed.noStance,
     });
 
     if (parsed.verbose) {
@@ -190,7 +193,7 @@ async function runTestCommand(args: string[]): Promise<void> {
     const result = await callModel({
       node,
       systemPrompt,
-      userMessage: isHead ? promptWithFiles : wrapWithStance(promptWithFiles, member!.stance),
+      userMessage: isHead ? promptWithFiles : wrapWithStance(promptWithFiles, parsed.noStance ? undefined : member!.stance),
     });
     process.stderr.write(
       `✓ ${isHead ? "Head" : `Member "${memberId}"`} responded in ${(result.elapsedMs / 1000).toFixed(1)}s\n`,
@@ -214,6 +217,7 @@ async function runTestCommand(args: string[]): Promise<void> {
 
 function parseArgs(argv: string[]): ParsedArgs {
   let noRevise = false;
+  let noStance = false;
   let verbose = false;
   let help = false;
   const fileInputs: string[] = [];
@@ -228,6 +232,11 @@ function parseArgs(argv: string[]): ParsedArgs {
 
     if (arg === "--no-revise") {
       noRevise = true;
+      continue;
+    }
+
+    if (arg === "--no-stance") {
+      noStance = true;
       continue;
     }
 
@@ -284,6 +293,7 @@ function parseArgs(argv: string[]): ParsedArgs {
 
   return {
     noRevise,
+    noStance,
     verbose,
     help,
     fileInputs,

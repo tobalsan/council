@@ -61,6 +61,7 @@ export interface MemberAnswer {
 export interface RunCouncilOptions {
   question: string;
   noRevise: boolean;
+  noStance: boolean;
 }
 
 export interface RunCouncilResult {

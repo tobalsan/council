@@ -118,10 +118,11 @@ API selection by endpoint:
 
 ### CLI transport
 
-Members and the head can run a local CLI instead of an HTTP API by setting `cli`. Supported values: `"codex"` and `"pi"`. `base_url` and `api_key` are not required for CLI nodes.
+Members and the head can run a local CLI instead of an HTTP API by setting `cli`. Supported values: `"codex"`, `"pi"`, and `"claude"`. `base_url` and `api_key` are not required for CLI nodes.
 
 - **codex** — must be authenticated before use (`codex` must be on `PATH`).
 - **pi** — requires `provider` (non-empty string passed to `--provider`). `pi` must be configured separately.
+- **claude** — runs the local Claude Code CLI (`claude -p`); must be authenticated (`claude` must be on `PATH`). No `provider` needed. `reasoning_effort` maps directly to Claude Code's `--effort` (`low|medium|high|xhigh|max`).
 
 `reasoning_effort`, `timeout`, and `system_prompt` work identically for CLI and API nodes. Mixed CLI/API councils are supported.
 
@@ -131,7 +132,8 @@ Example CLI members and a codex head:
 {
   "members": [
     { "id": "gpt", "cli": "codex", "model": "gpt-5.5", "reasoning_effort": "high", "timeout": 300 },
-    { "id": "glm", "cli": "pi", "provider": "zai", "model": "glm-5.2", "reasoning_effort": "high", "timeout": 300 }
+    { "id": "glm", "cli": "pi", "provider": "zai", "model": "glm-5.2", "reasoning_effort": "high", "timeout": 300 },
+    { "id": "claude", "cli": "claude", "model": "opus", "reasoning_effort": "high", "timeout": 300 }
   ],
   "head": { "cli": "codex", "model": "gpt-5.5", "reasoning_effort": "xhigh", "timeout": 600 }
 }

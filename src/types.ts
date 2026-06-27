@@ -36,7 +36,7 @@ export interface NormalizedApiNode extends NormalizedNodeBase {
 
 export interface NormalizedCliNode extends NormalizedNodeBase {
   transport: "cli";
-  cli: "codex" | "pi";
+  cli: "codex" | "pi" | "claude";
   provider?: string;
 }
 

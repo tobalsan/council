@@ -6,6 +6,7 @@ import { callModel, formatError } from "./client.js";
 import {
   DEFAULT_HEAD_SYSTEM_PROMPT,
   DEFAULT_MEMBER_SYSTEM_PROMPT,
+  wrapWithStance,
 } from "./prompts.js";
 import { buildPromptWithFiles, FileInputError, readFiles } from "./files.js";
 import { loadSavedRun } from "./runstore.js";
@@ -189,7 +190,7 @@ async function runTestCommand(args: string[]): Promise<void> {
     const result = await callModel({
       node,
       systemPrompt,
-      userMessage: promptWithFiles,
+      userMessage: isHead ? promptWithFiles : wrapWithStance(promptWithFiles, member!.stance),
     });
     process.stderr.write(
       `✓ ${isHead ? "Head" : `Member "${memberId}"`} responded in ${(result.elapsedMs / 1000).toFixed(1)}s\n`,

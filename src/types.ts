@@ -3,6 +3,7 @@ export interface ModelNodeConfig {
   model: string;
   api_key?: string;
   system_prompt?: string;
+  stance?: string;
   timeout?: number;
   reasoning_effort?: string;
   cli?: string;
@@ -26,6 +27,7 @@ interface NormalizedNodeBase {
   timeoutSec: number;
   reasoningEffort: string;
   systemPrompt?: string;
+  stance?: string;
 }
 
 export interface NormalizedApiNode extends NormalizedNodeBase {

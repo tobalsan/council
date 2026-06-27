@@ -2,6 +2,7 @@ import { callModel, formatError } from "./client.js";
 import {
   buildHeadUserPrompt,
   buildRevisionUserPrompt,
+  wrapWithStance,
   DEFAULT_HEAD_SYSTEM_PROMPT,
   DEFAULT_MEMBER_SYSTEM_PROMPT,
 } from "./prompts.js";
@@ -81,7 +82,7 @@ async function runRound1(
       const result = await callModel({
         node: member,
         systemPrompt: member.systemPrompt ?? DEFAULT_MEMBER_SYSTEM_PROMPT,
-        userMessage: question,
+        userMessage: wrapWithStance(question, member.stance),
       });
       status.memberSuccess(member.id, result.elapsedMs / 1000, 1);
       const savedPath = saveMemberAnswer(runDirectory, member.id, 1, result.text);
@@ -120,7 +121,7 @@ async function runRound2(
       const result = await callModel({
         node: member,
         systemPrompt: member.systemPrompt ?? DEFAULT_MEMBER_SYSTEM_PROMPT,
-        userMessage: revisionPrompt,
+        userMessage: wrapWithStance(revisionPrompt, member.stance),
       });
       status.memberSuccess(member.id, result.elapsedMs / 1000, 2);
       const savedPath = saveMemberAnswer(runDirectory, member.id, 2, result.text);

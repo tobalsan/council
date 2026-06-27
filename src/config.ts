@@ -80,10 +80,11 @@ function normalizeNodeBase(
   input: Record<string, unknown>,
   prefix: string,
   globalTimeoutSec: number,
-): { model: string; timeoutSec: number; reasoningEffort: string; systemPrompt?: string } {
+): { model: string; timeoutSec: number; reasoningEffort: string; systemPrompt?: string; stance?: string } {
   const model = requireNonEmptyString(input.model, `${prefix}.model`);
   const timeoutOverride = normalizeOptionalTimeout(input.timeout, `${prefix}.timeout`);
   const systemPrompt = normalizeOptionalString(input.system_prompt, `${prefix}.system_prompt`);
+  const stance = normalizeOptionalString(input.stance, `${prefix}.stance`);
   const reasoningEffort = normalizeOptionalString(input.reasoning_effort, `${prefix}.reasoning_effort`);
 
   return {
@@ -91,6 +92,7 @@ function normalizeNodeBase(
     timeoutSec: timeoutOverride ?? globalTimeoutSec,
     reasoningEffort: reasoningEffort ?? DEFAULT_REASONING_EFFORT,
     ...(systemPrompt ? { systemPrompt } : {}),
+    ...(stance ? { stance } : {}),
   };
 }
 

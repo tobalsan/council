@@ -78,7 +78,9 @@ council --skip grok,gemini "original question"
 
 ## Config (`~/.council/council.json`)
 
-`api_key` can be a literal key or `$ENV_VAR`. `reasoning_effort` is optional per member/head (default `xhigh`), passed through verbatim to the provider (`low|medium|high|xhigh|max` for Anthropic/OpenAI; xAI grok supports only up to `high`, so set `reasoning_effort: "high"` for xAI members).
+`api_key` can be a literal key or `$ENV_VAR`. `reasoning_effort` is optional per member/head (default `xhigh`), passed through verbatim to the provider (`low|medium|high|xhigh|max` for Anthropic/OpenAI; xAI grok supports only up to `high`, so set `reasoning_effort: "high"` for xAI members). `system_prompt` is an optional per-member/head string that replaces the default system prompt.
+
+`stance` is an optional per-member string — a hard behavioral mandate (e.g. a Devil's Advocate or Red Team role) injected as the first, highest-priority instruction in the member's user message and reinforced at the end. Applies to members only (the head uses `system_prompt`). It takes effect in round 1, the revision round, and the `test <member>` command.
 
 ```json
 {
@@ -89,7 +91,8 @@ council --skip grok,gemini "original question"
       "model": "xai/grok-4.1-fast",
       "api_key": "$OPENROUTER_KEY",
       "timeout": 180,
-      "reasoning_effort": "high"
+      "reasoning_effort": "high",
+      "stance": "You are the Devil's Advocate. Oppose the emerging consensus and surface its strongest counterargument."
     },
     {
       "id": "gpt",

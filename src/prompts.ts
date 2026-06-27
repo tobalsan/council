@@ -34,6 +34,26 @@ export function buildRevisionUserPrompt(
   ].join("\n");
 }
 
+export function wrapWithStance(userMessage: string, stance?: string): string {
+  if (!stance) {
+    return userMessage;
+  }
+
+  return [
+    `=== ASSIGNED STANCE (MANDATORY — overrides any conflicting framing in the request below) ===`,
+    stance,
+    "",
+    "You must reason and argue from this stance throughout your entire response. Do not abandon, hedge, or soften it to agree with others or reach consensus.",
+    "=== END STANCE ===",
+    "",
+    userMessage,
+    "",
+    "---",
+    "",
+    `Reminder — your mandated stance for this response: ${stance}`,
+  ].join("\n");
+}
+
 export function buildHeadUserPrompt(
   question: string,
   finalResponses: MemberAnswer[],

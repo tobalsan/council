@@ -122,11 +122,12 @@ API selection by endpoint:
 
 ### CLI transport
 
-Members and the head can run a local CLI instead of an HTTP API by setting `cli`. Supported values: `"codex"`, `"pi"`, and `"claude"`. `base_url` and `api_key` are not required for CLI nodes.
+Members and the head can run a local CLI instead of an HTTP API by setting `cli`. Supported values: `"codex"`, `"pi"`, `"claude"`, and `"grok"`. `base_url` and `api_key` are not required for CLI nodes.
 
 - **codex** — must be authenticated before use (`codex` must be on `PATH`).
 - **pi** — requires `provider` (non-empty string passed to `--provider`). `pi` must be configured separately.
 - **claude** — runs the local Claude Code CLI (`claude -p`); must be authenticated (`claude` must be on `PATH`). No `provider` needed. `reasoning_effort` maps directly to Claude Code's `--effort` (`low|medium|high|xhigh|max`).
+- **grok** — runs the local Grok CLI (`grok -p`); must be authenticated (`grok` must be on `PATH`). No `provider` needed. `reasoning_effort` is passed to `--reasoning-effort`.
 
 `reasoning_effort`, `timeout`, and `system_prompt` work identically for CLI and API nodes. Mixed CLI/API councils are supported.
 

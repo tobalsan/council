@@ -102,9 +102,9 @@ function normalizeCliNode(
   prefix: string,
   globalTimeoutSec: number,
 ): NormalizedCliNode {
-  if (cliValue !== "codex" && cliValue !== "pi" && cliValue !== "claude") {
+  if (cliValue !== "codex" && cliValue !== "pi" && cliValue !== "claude" && cliValue !== "grok") {
     throw new ConfigError(
-      `${prefix}.cli must be "codex", "pi", or "claude", got "${cliValue}"`,
+      `${prefix}.cli must be "codex", "pi", "claude", or "grok", got "${cliValue}"`,
     );
   }
 
@@ -117,6 +117,10 @@ function normalizeCliNode(
 
   if (cliValue === "claude") {
     return { transport: "cli", cli: "claude", ...base };
+  }
+
+  if (cliValue === "grok") {
+    return { transport: "cli", cli: "grok", ...base };
   }
 
   return { transport: "cli", cli: "codex", ...base };

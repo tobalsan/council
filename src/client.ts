@@ -213,6 +213,9 @@ async function callCli(
   if (node.cli === "claude") {
     return await callClaude(node, systemPrompt, userMessage);
   }
+  if (node.cli === "grok") {
+    return await callGrok(node, systemPrompt, userMessage);
+  }
   return await callPi(node, systemPrompt, userMessage);
 }
 
@@ -315,6 +318,34 @@ async function callClaude(
   const answer = stdout.trim();
   if (answer.length === 0) {
     throw new Error("claude produced no output");
+  }
+
+  return answer;
+}
+
+async function callGrok(
+  node: NormalizedCliNode,
+  systemPrompt: string,
+  userMessage: string,
+): Promise<string> {
+  const { model, reasoningEffort: effort, timeoutSec } = node;
+
+  const args = [
+    "--model", model,
+    "--reasoning-effort", effort,
+    "--system-prompt-override", systemPrompt,
+    "-p", userMessage,
+  ];
+
+  const { code, stdout, stderr } = await runProcess("grok", args, undefined, timeoutSec);
+
+  if (code !== 0) {
+    throw new Error(`grok exited ${code}: ${stderr.trim() || stdout.trim()}`);
+  }
+
+  const answer = stdout.trim();
+  if (answer.length === 0) {
+    throw new Error("grok produced no output");
   }
 
   return answer;

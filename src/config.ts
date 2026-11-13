@@ -22,8 +22,28 @@ export function getConfigPath(): string {
   return join(homedir(), ".council", "council.json");
 }
 
+async function loadEnvFile(envPath: string): Promise<void> {
+  let raw: string;
+  try {
+    raw = await readFile(envPath, "utf8");
+  } catch {
+    return;
+  }
+
+  for (const line of raw.split(/\r?\n/)) {
+    const match = line.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/);
+    if (!match?.[1] || match[2] === undefined) continue;
+    const name = match[1];
+    const value = match[2].replace(/^(["'])(.*)\1$/, "$2");
+    if (process.env[name] === undefined) {
+      process.env[name] = value;
+    }
+  }
+}
+
 export async function loadConfig(): Promise<NormalizedCouncilConfig> {
   const configPath = getConfigPath();
+  await loadEnvFile(join(homedir(), ".council", ".env"));
   let raw: string;
 
   try {
